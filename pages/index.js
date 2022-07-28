@@ -1,9 +1,42 @@
 import Head from 'next/head';
 import Image from 'next/image';
+import { AdvancedImage } from '@cloudinary/react';
+import { Cloudinary } from '@cloudinary/url-gen';
+import { useState } from 'react';
 import styles from '../styles/Home.module.css';
 
 export default function Home() {
-  const handleSubmit = () => {};
+  const [file, setFile] = useState(null);
+  const [imgSrc, setImgSrc] = useState(null);
+
+  const cld = new Cloudinary({
+    cloud: {
+      cloudName: process.env.NEXT_PUBLIC_CLOUD_NAME,
+    },
+  });
+
+  const myImage = cld.image(imgSrc);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    fetch('/api/convert', {
+      method: 'POST',
+      body: formData,
+    })
+      .then((res) => res.json())
+      .then((res) => {
+        console.log(res.data);
+        setImgSrc(`${res.data.public_id}.jpg`);
+      })
+
+      .catch((e) => console.log(e));
+  };
+
+
   return (
     <div className={styles.container}>
       <Head>
@@ -23,14 +56,16 @@ export default function Home() {
             <input
               type='file'
               name='img'
-              accept='.doc, .ppt'
+              accept='.doc, .docx, .ppt, .pptx'
               required
               multiple
               className={styles.fileUpload}
-              // onChange={handleChange}
+              onChange={(e) => setFile(e.target.files[0])}
             />
             <button className={styles.button}>Submit</button>
           </form>
+
+          {imgSrc && <AdvancedImage cldImg={myImage} />}
 
           <Image
             // key={i}
