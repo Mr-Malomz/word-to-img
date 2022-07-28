@@ -23,7 +23,7 @@ export default function Home() {
             <input
               type='file'
               name='img'
-              accept='.doc'
+              accept='.doc, .ppt'
               required
               multiple
               className={styles.fileUpload}
