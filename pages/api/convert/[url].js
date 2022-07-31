@@ -1,6 +1,5 @@
 import cloudinary from 'cloudinary';
-import { IncomingForm } from 'formidable';
-import fs from 'fs';
+import multer from 'multer';
 
 export const config = {
   api: {
@@ -8,9 +7,17 @@ export const config = {
   },
 };
 
+const storage = multer.diskStorage({
+  destination: './public/uploads',
+  filename: (req, file, cb) => cb(null, file.originalname),
+});
+
+const upload = multer({
+  storage,
+});
+
 export default async function convert(req, res) {
   const cld = cloudinary.v2;
-  const form = new IncomingForm();
 
   cld.config({
     cloud_name: process.env.NEXT_PUBLIC_CLOUD_NAME,
@@ -27,87 +34,62 @@ export default async function convert(req, res) {
     });
   };
 
-  if (!fs.existsSync('./public/uploads')) {
-    fs.mkdirSync('./public/uploads', { recursive: true });
-  }
-
-  form.parse(req, (err, fields, files) => {
-    if (err) {
-      res.status(500).json({ msg: err });
-      return;
-    }
-    let tempFilePath = files.file.filepath;
-    let projectFilePath = `./public/uploads/${files.file.originalFilename}`;
-
-    fs.rename(tempFilePath, projectFilePath, (err) => {
-      if (err) {
-        res.status(500).json({ msg: err.message });
-      }
-    });
+  upload.single('file')(req, {}, (err) => {
+    const filePath = `./public/uploads/${req.file.originalname}`;
 
     cld.uploader
-      .upload(
-        projectFilePath,
-        {
-          resource_type: 'raw',
-          raw_convert: 'aspose',
-          notification_url: `http://${url}`,
-        },
-        async function (error, result) {
-          let state = null;
+      .upload(filePath, {
+        resource_type: 'raw',
+        raw_convert: 'aspose',
+        notification_url: `http://${url}`,
+      })
+      .then(async (result) => {
+        let state = null;
 
-          if (result.info.raw_convert.aspose.status === 'pending') {
-            //check if status is successful
-            while (state !== 'success') {
-              await wait();
-              cld.api
-                .resource(
-                  result.public_id,
-                  { resource_type: 'raw' },
-                  function (error, result) {
-                    if (result) {
-                      return result;
-                    } else {
-                      return error;
-                    }
+        if (result.info.raw_convert.aspose.status === 'pending') {
+          //check if status is successful
+          while (state !== 'success') {
+            await wait();
+            return cld.api
+              .resource(
+                result.public_id,
+                { resource_type: 'raw' },
+                function (error, result) {
+                  if (result) {
+                    return result;
+                  } else {
+                    return error;
                   }
-                )
-                .then((_) => {
-                  res.status(200).json({
-                    msg: 'document converted successfully!',
-                    converted: cld.url(`${result.public_id}.jpeg`, {
-                      transformation: [{ width: 600, crop: 'scale' }],
-                    }),
-                  });
-                  state = 'success';
+                }
+              )
+              .then((_) => {
+                state = 'success';
 
-                  //clean up
-                  fs.unlinkSync(projectFilePath);
-                  return;
-                })
-                .catch((_) => {
-                  res.status(500).json({ msg: 'error' });
-                  return;
+                return res.status(200).json({
+                  msg: 'document converted successfully!',
+                  converted: cld.url(`${result.public_id}.jpeg`, {
+                    transformation: [{ width: 600, crop: 'scale' }],
+                  }),
                 });
-            }
-          } else if (result.info.raw_convert.aspose.status !== 'pending') {
-            res.status(200).json({
-              msg: 'document converted successfully!',
-              converted: cld.url(`${result.public_id}.jpeg`, {
-                transformation: [{ width: 600, crop: 'scale' }],
-              }),
-            });
-
-            //clean up
-            fs.unlinkSync(projectFilePath);
-            return;
-          } else {
-            res.status(500).json({ msg: 'error' });
-            return;
+              })
+              .catch((_) => {
+                return res.status(500).json({ msg: 'error' });
+              });
           }
+        } else if (result.info.raw_convert.aspose.status !== 'pending') {
+          return res.status(200).json({
+            msg: 'document converted successfully!',
+            converted: cld.url(`${result.public_id}.jpeg`, {
+              transformation: [{ width: 600, crop: 'scale' }],
+            }),
+          });
+        } else {
+          return res.status(500).json({ msg: 'error' });
         }
-      )
-      .catch((_) => res.status(500).json({ msg: 'error' }));
-    return;
+      })
+      .catch((error) => {
+        console.log(error);
+        return res.status(500).json({ msg: error });
+      });
   });
 }
