@@ -1,41 +1,33 @@
 import Head from 'next/head';
 import Image from 'next/image';
-import { AdvancedImage } from '@cloudinary/react';
-import { Cloudinary } from '@cloudinary/url-gen';
 import { useState } from 'react';
 import styles from '../styles/Home.module.css';
 
 export default function Home() {
   const [file, setFile] = useState(null);
   const [imgSrc, setImgSrc] = useState(null);
-
-  const cld = new Cloudinary({
-    cloud: {
-      cloudName: process.env.NEXT_PUBLIC_CLOUD_NAME,
-    },
-  });
-
-  const myImage = cld.image(imgSrc);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    setIsLoading(true);
 
     const formData = new FormData();
     formData.append('file', file);
 
-    fetch('/api/convert', {
+    fetch(`/api/convert/${window.location.host}`, {
       method: 'POST',
       body: formData,
     })
       .then((res) => res.json())
       .then((res) => {
-        console.log(res.data);
-        setImgSrc(`${res.data.public_id}.jpg`);
+        setImgSrc(res.converted);
+        setIsLoading(false);
       })
-
-      .catch((e) => console.log(e));
+      .catch((_) => {
+        alert('File Upload error!');
+      });
   };
-
 
   return (
     <div className={styles.container}>
@@ -56,27 +48,26 @@ export default function Home() {
             <input
               type='file'
               name='img'
-              accept='.doc, .docx, .ppt, .pptx'
+              accept='.doc, .docx'
               required
               multiple
               className={styles.fileUpload}
               onChange={(e) => setFile(e.target.files[0])}
             />
-            <button className={styles.button}>Submit</button>
+            <button className={styles.button} disabled={isLoading}>
+              {isLoading ? 'Converting' : 'Submit'}
+            </button>
           </form>
 
-          {imgSrc && <AdvancedImage cldImg={myImage} />}
-
-          <Image
-            // key={i}
-            src={
-              'data:image/png;base64,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'
-            }
-            height={350}
-            width={350}
-            alt='uploads'
-            className={styles.img}
-          />
+          {imgSrc && (
+            <Image
+              src={imgSrc}
+              height={350}
+              width={350}
+              alt='uploads'
+              className={styles.img}
+            />
+          )}
         </section>
       </main>
     </div>
